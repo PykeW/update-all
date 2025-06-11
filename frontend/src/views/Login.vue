@@ -6,7 +6,7 @@
       
       <div class="qrcode-container">
         <div v-if="loading" class="loading">
-          <el-spinner size="large" />
+          <el-loading></el-loading>
         </div>
         <div v-else-if="errorMessage" class="text-center">
           <p class="error-message">{{ errorMessage }}</p>
@@ -46,7 +46,7 @@ export default {
         const config = await api.getDingTalkConfig()
         
         // 确保全局变量 DDLogin 可用
-        if (typeof DDLogin !== 'function') {
+        if (typeof window.DDLogin !== 'function') {
           throw new Error('钉钉登录SDK加载失败')
         }
 
@@ -55,7 +55,7 @@ export default {
         if (container) container.innerHTML = ''
         
         // 初始化钉钉扫码登录
-        const ddObj = new DDLogin({
+        const ddObj = new window.DDLogin({
           id: 'dingtalk-login-container',
           goto: config.goto,
           style: 'border:none;background-color:#FFFFFF;',
