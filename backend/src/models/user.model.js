@@ -1,91 +1,123 @@
 /**
  * 用户模型
  */
-const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const db = require('./db');
 
-const userSchema = new mongoose.Schema(
-  {
-    // 钉钉用户ID
-    dingtalkId: {
-      type: String,
-      unique: true,
-      sparse: true,
-    },
-    
-    // 用户名
-    username: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    
-    // 昵称（显示名称）
-    displayName: {
-      type: String,
-      required: true,
-    },
-    
-    // 电子邮件
-    email: {
-      type: String,
-      unique: true,
-      sparse: true,
-      lowercase: true,
-    },
-    
-    // 密码（如果需要密码登录）
-    password: {
-      type: String,
-    },
-    
-    // 头像URL
-    avatar: {
-      type: String,
-    },
-    
-    // 角色
-    role: {
-      type: String,
-      enum: ['user', 'admin'],
-      default: 'user',
-    },
-    
-    // 部门
-    department: {
-      type: String,
-    },
-    
-    // 职位
-    position: {
-      type: String,
-    },
-    
-    // 是否启用
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    
-    // 上次登录时间
-    lastLogin: {
-      type: Date,
-    },
-  },
-  { timestamps: true }
-);
-
-// 添加密码哈希方法
-userSchema.methods.hashPassword = async function (password) {
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(password, salt);
+/**
+ * 根据ID查找用户
+ * @param {string} id 用户ID
+ * @returns {Promise<Object>} 用户对象
+ */
+exports.findById = async (id) => {
+  return await db.users.findOneAsync({ _id: id });
 };
 
-// 验证密码方法
-userSchema.methods.isValidPassword = async function (password) {
-  return await bcrypt.compare(password, this.password);
+/**
+ * 根据钉钉ID查找用户
+ * @param {string} dingtalkId 钉钉用户ID
+ * @returns {Promise<Object>} 用户对象
+ */
+exports.findByDingtalkId = async (dingtalkId) => {
+  return await db.users.findOneAsync({ dingtalkId });
 };
 
-const User = mongoose.model('User', userSchema);
+/**
+ * 根据用户名查找用户
+ * @param {string} username 用户名
+ * @returns {Promise<Object>} 用户对象
+ */
+exports.findByUsername = async (username) => {
+  return await db.users.findOneAsync({ username });
+};
 
-module.exports = User; 
+/**
+ * 创建新用户
+ * @param {Object} userData 用户数据
+ * @returns {Promise<Object>} 创建的用户对象
+ */
+exports.create = async (userData) => {
+  // 如果提供了密码，则进行哈希处理
+  if (userData.password) {
+    const salt = await bcrypt.genSalt(10);
+    userData.password = await bcrypt.hash(userData.password, salt);
+  }
+  
+  return await db.users.insertAsync(userData);
+};
+
+/**
+ * 更新用户信息
+ * @param {string} id 用户ID
+ * @param {Object} updateData 更新的数据
+ * @returns {Promise<Object>} 更新后的用户对象
+ */
+exports.update = async (id, updateData) => {
+  await db.users.updateAsync({ _id: id }, { $set: updateData });
+  return await exports.findById(id);
+};
+
+/**
+ * 删除用户
+ * @param {string} id 用户ID
+ * @returns {Promise<boolean>} 操作是否成功
+ */
+exports.delete = async (id) => {
+  const result = await db.users.removeAsync({ _id: id });
+  return result > 0;
+};
+
+/**
+ * 获取用户列表
+ * @param {number} page 页码
+ * @param {number} limit 每页数量
+ * @returns {Promise<{users: Object[], total: number, page: number, pages: number}>} 分页用户列表
+ */
+exports.getUsers = async (page = 1, limit = 10) => {
+  const skip = (page - 1) * limit;
+  
+  const total = await db.users.countAsync({});
+  const usersQuery = db.users.findAsync({});
+  
+  // 手动处理分页和排序（NeDB不支持MongoDB的skip/limit链式调用）
+  const users = await new Promise((resolve, reject) => {
+    usersQuery
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .exec((err, docs) => {
+        if (err) return reject(err);
+        resolve(docs);
+      });
+  });
+  
+  return {
+    users,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  };
+};
+
+/**
+ * 更新用户最后登录时间
+ * @param {string} id 用户ID
+ * @returns {Promise<Object>} 更新后的用户对象
+ */
+exports.updateLastLogin = async (id) => {
+  await db.users.updateAsync(
+    { _id: id },
+    { $set: { lastLogin: new Date() } }
+  );
+  return await exports.findById(id);
+};
+
+/**
+ * 验证密码
+ * @param {Object} user 用户对象
+ * @param {string} password 密码
+ * @returns {Promise<boolean>} 密码是否正确
+ */
+exports.isValidPassword = async (user, password) => {
+  return await bcrypt.compare(password, user.password);
+}; 

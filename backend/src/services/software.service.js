@@ -24,8 +24,7 @@ exports.create = async (softwareData) => {
     softwareData.downloadUrlExpires = new Date(Date.now() + expiresInSeconds * 1000);
   }
   
-  const software = new Software(softwareData);
-  return await software.save();
+  return await Software.create(softwareData);
 };
 
 /**
@@ -35,7 +34,7 @@ exports.create = async (softwareData) => {
  * @returns {Promise<Software>} 更新后的软件对象
  */
 exports.update = async (id, updateData) => {
-  return await Software.findByIdAndUpdate(id, updateData, { new: true });
+  return await Software.update(id, updateData);
 };
 
 /**
@@ -56,8 +55,7 @@ exports.delete = async (id) => {
     }
   }
   
-  const result = await Software.findByIdAndDelete(id);
-  return !!result;
+  return await Software.delete(id);
 };
 
 /**
@@ -66,7 +64,7 @@ exports.delete = async (id) => {
  * @returns {Promise<Software>} 软件对象
  */
 exports.findById = async (id) => {
-  return await Software.findById(id).populate('publisher', 'username displayName');
+  return await Software.findById(id);
 };
 
 /**
@@ -77,26 +75,7 @@ exports.findById = async (id) => {
  * @returns {Promise<{softwares: Software[], total: number, page: number, pages: number}>} 分页软件列表
  */
 exports.getSoftwareList = async (page = 1, limit = 10, filter = {}) => {
-  const skip = (page - 1) * limit;
-  
-  // 默认只显示已发布的软件
-  if (filter.isPublished === undefined) {
-    filter.isPublished = true;
-  }
-  
-  const total = await Software.countDocuments(filter);
-  const softwares = await Software.find(filter)
-    .sort({ createdAt: -1 })
-    .populate('publisher', 'username displayName')
-    .skip(skip)
-    .limit(limit);
-  
-  return {
-    softwares,
-    total,
-    page,
-    pages: Math.ceil(total / limit),
-  };
+  return await Software.getSoftwareList(page, limit, filter);
 };
 
 /**
@@ -107,26 +86,7 @@ exports.getSoftwareList = async (page = 1, limit = 10, filter = {}) => {
  * @returns {Promise<{softwares: Software[], total: number, page: number, pages: number}>} 分页软件列表
  */
 exports.searchSoftware = async (query, page = 1, limit = 10) => {
-  const skip = (page - 1) * limit;
-  
-  const filter = {
-    isPublished: true,
-    $text: { $search: query },
-  };
-  
-  const total = await Software.countDocuments(filter);
-  const softwares = await Software.find(filter, { score: { $meta: 'textScore' } })
-    .sort({ score: { $meta: 'textScore' } })
-    .populate('publisher', 'username displayName')
-    .skip(skip)
-    .limit(limit);
-  
-  return {
-    softwares,
-    total,
-    page,
-    pages: Math.ceil(total / limit),
-  };
+  return await Software.searchSoftware(query, page, limit);
 };
 
 /**
@@ -139,18 +99,23 @@ exports.searchSoftware = async (query, page = 1, limit = 10) => {
  */
 exports.recordDownload = async (softwareId, userId, ipAddress, userAgent) => {
   // 递增软件的下载次数
-  await Software.findByIdAndUpdate(softwareId, { $inc: { downloads: 1 } });
+  const software = await Software.findById(softwareId);
+  if (software) {
+    const downloads = software.downloads || 0;
+    await Software.update(softwareId, { downloads: downloads + 1 });
+  }
   
   // 创建下载记录
-  const downloadRecord = new Download({
+  const downloadRecord = {
     software: softwareId,
     user: userId,
     ipAddress,
     userAgent,
     status: 'success',
-  });
+    downloadTime: new Date()
+  };
   
-  return await downloadRecord.save();
+  return await Download.create(downloadRecord);
 };
 
 /**
@@ -159,10 +124,7 @@ exports.recordDownload = async (softwareId, userId, ipAddress, userAgent) => {
  * @returns {Promise<Software[]>} 推荐软件列表
  */
 exports.getRecommendedSoftware = async (limit = 5) => {
-  return await Software.find({ isPublished: true, isRecommended: true })
-    .sort({ downloads: -1 })
-    .limit(limit)
-    .populate('publisher', 'username displayName');
+  return await Software.getRecommendedSoftware(limit);
 };
 
 /**
@@ -192,9 +154,12 @@ exports.getDownloadUrl = async (softwareId) => {
     );
     
     // 更新数据库
-    software.downloadUrl = downloadUrl;
-    software.downloadUrlExpires = new Date(Date.now() + expiresInSeconds * 1000);
-    await software.save();
+    await Software.update(softwareId, {
+      downloadUrl: downloadUrl,
+      downloadUrlExpires: new Date(Date.now() + expiresInSeconds * 1000)
+    });
+    
+    return downloadUrl;
   }
   
   return software.downloadUrl;

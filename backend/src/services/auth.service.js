@@ -70,6 +70,7 @@ exports.loginWithDingtalk = async (authCode) => {
         displayName: dingtalkUserInfo.nick || username,
         avatar: dingtalkUserInfo.avatar,
         isActive: true,
+        role: 'user', // 确保设置默认角色
       });
     }
     

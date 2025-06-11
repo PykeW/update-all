@@ -1,121 +1,209 @@
 /**
  * 软件模型
  */
-const mongoose = require('mongoose');
+const db = require('./db');
 
-const softwareSchema = new mongoose.Schema(
-  {
-    // 软件名称
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    
-    // 版本号
-    version: {
-      type: String,
-      required: true,
-    },
-    
-    // 描述
-    description: {
-      type: String,
-      required: true,
-    },
-    
-    // 软件类型/分类
-    category: {
-      type: String,
-      required: true,
-    },
-    
-    // 软件图标URL
-    icon: {
-      type: String,
-    },
-    
-    // 软件安装包URL
-    downloadUrl: {
-      type: String,
-      required: true,
-    },
-    
-    // 软件大小（字节）
-    size: {
-      type: Number,
-      required: true,
-    },
-    
-    // 平台支持 (windows, mac, linux)
-    platforms: {
-      type: [String],
-      enum: ['windows', 'mac', 'linux', 'android', 'ios'],
-      default: ['windows'],
-    },
-    
-    // 发布日期
-    releaseDate: {
-      type: Date,
-      default: Date.now,
-    },
-    
-    // 下载次数
-    downloads: {
-      type: Number,
-      default: 0,
-    },
-    
-    // 是否发布
-    isPublished: {
-      type: Boolean,
-      default: true,
-    },
-    
-    // 是否为推荐软件
-    isRecommended: {
-      type: Boolean,
-      default: false,
-    },
-    
-    // 安装说明
-    installInstructions: {
-      type: String,
-    },
-    
-    // 发布人
-    publisher: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    
-    // OSS对象键
-    ossKey: {
-      type: String,
-    },
-    
-    // 文件的ETag (用于标识文件版本)
-    fileETag: {
-      type: String,
-    },
-    
-    // 文件的MIME类型
-    contentType: {
-      type: String,
-    },
-    
-    // 下载URL过期时间
-    downloadUrlExpires: {
-      type: Date,
+/**
+ * 创建新软件
+ * @param {Object} softwareData 软件数据
+ * @returns {Promise<Object>} 创建的软件对象
+ */
+exports.create = async (softwareData) => {
+  return await db.software.insertAsync(softwareData);
+};
+
+/**
+ * 更新软件信息
+ * @param {string} id 软件ID
+ * @param {Object} updateData 更新的数据
+ * @returns {Promise<Object>} 更新后的软件对象
+ */
+exports.update = async (id, updateData) => {
+  await db.software.updateAsync({ _id: id }, { $set: updateData });
+  return await exports.findById(id);
+};
+
+/**
+ * 删除软件
+ * @param {string} id 软件ID
+ * @returns {Promise<boolean>} 操作是否成功
+ */
+exports.delete = async (id) => {
+  const result = await db.software.removeAsync({ _id: id });
+  return result > 0;
+};
+
+/**
+ * 根据ID查找软件
+ * @param {string} id 软件ID
+ * @returns {Promise<Object>} 软件对象
+ */
+exports.findById = async (id) => {
+  const software = await db.software.findOneAsync({ _id: id });
+  if (software && software.publisher) {
+    // 手动执行联接查询，获取发布者信息
+    const publisher = await db.users.findOneAsync({ _id: software.publisher });
+    if (publisher) {
+      software.publisher = {
+        _id: publisher._id,
+        username: publisher.username,
+        displayName: publisher.displayName
+      };
     }
-  },
-  { timestamps: true }
-);
+  }
+  return software;
+};
 
-// 创建索引以支持搜索
-softwareSchema.index({ name: 'text', description: 'text', category: 'text' });
+/**
+ * 获取所有软件列表
+ * @param {number} page 页码
+ * @param {number} limit 每页数量
+ * @param {Object} filter 过滤条件
+ * @returns {Promise<{softwares: Object[], total: number, page: number, pages: number}>} 分页软件列表
+ */
+exports.getSoftwareList = async (page = 1, limit = 10, filter = {}) => {
+  const skip = (page - 1) * limit;
+  
+  // 默认只显示已发布的软件
+  if (filter.isPublished === undefined) {
+    filter.isPublished = true;
+  }
+  
+  const total = await db.software.countAsync(filter);
+  
+  // 查询软件列表
+  const softwaresQuery = db.software.findAsync(filter);
+  
+  // 手动处理分页和排序
+  const softwares = await new Promise((resolve, reject) => {
+    softwaresQuery
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .exec(async (err, docs) => {
+        if (err) return reject(err);
+        
+        // 手动获取发布者信息
+        for (let i = 0; i < docs.length; i++) {
+          if (docs[i].publisher) {
+            const publisher = await db.users.findOneAsync({ _id: docs[i].publisher });
+            if (publisher) {
+              docs[i].publisher = {
+                _id: publisher._id,
+                username: publisher.username,
+                displayName: publisher.displayName
+              };
+            }
+          }
+        }
+        
+        resolve(docs);
+      });
+  });
+  
+  return {
+    softwares,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  };
+};
 
-const Software = mongoose.model('Software', softwareSchema);
+/**
+ * 搜索软件
+ * @param {string} query 搜索关键词
+ * @param {number} page 页码
+ * @param {number} limit 每页数量
+ * @returns {Promise<{softwares: Object[], total: number, page: number, pages: number}>} 分页软件列表
+ */
+exports.searchSoftware = async (query, page = 1, limit = 10) => {
+  const skip = (page - 1) * limit;
+  
+  // NeDB不支持MongoDB的$text搜索，实现简单的关键词搜索
+  const filter = {
+    isPublished: true,
+    $or: [
+      { name: new RegExp(query, 'i') },
+      { description: new RegExp(query, 'i') },
+      { category: new RegExp(query, 'i') }
+    ]
+  };
+  
+  const total = await db.software.countAsync(filter);
+  
+  // 查询软件列表
+  const softwaresQuery = db.software.findAsync(filter);
+  
+  // 手动处理分页和排序
+  const softwares = await new Promise((resolve, reject) => {
+    softwaresQuery
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .exec(async (err, docs) => {
+        if (err) return reject(err);
+        
+        // 手动获取发布者信息
+        for (let i = 0; i < docs.length; i++) {
+          if (docs[i].publisher) {
+            const publisher = await db.users.findOneAsync({ _id: docs[i].publisher });
+            if (publisher) {
+              docs[i].publisher = {
+                _id: publisher._id,
+                username: publisher.username,
+                displayName: publisher.displayName
+              };
+            }
+          }
+        }
+        
+        resolve(docs);
+      });
+  });
+  
+  return {
+    softwares,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  };
+};
 
-module.exports = Software; 
+/**
+ * 获取推荐软件
+ * @param {number} limit 数量限制
+ * @returns {Promise<Object[]>} 推荐软件列表
+ */
+exports.getRecommendedSoftware = async (limit = 5) => {
+  // 查询推荐软件列表
+  const filter = { isPublished: true, isRecommended: true };
+  const recommendedQuery = db.software.findAsync(filter);
+  
+  // 手动处理排序和限制
+  const software = await new Promise((resolve, reject) => {
+    recommendedQuery
+      .sort({ downloads: -1 })
+      .limit(limit)
+      .exec(async (err, docs) => {
+        if (err) return reject(err);
+        
+        // 手动获取发布者信息
+        for (let i = 0; i < docs.length; i++) {
+          if (docs[i].publisher) {
+            const publisher = await db.users.findOneAsync({ _id: docs[i].publisher });
+            if (publisher) {
+              docs[i].publisher = {
+                _id: publisher._id,
+                username: publisher.username,
+                displayName: publisher.displayName
+              };
+            }
+          }
+        }
+        
+        resolve(docs);
+      });
+  });
+  
+  return software;
+}; 
