@@ -1,15 +1,60 @@
-# 软件下载平台后端服务
+# 软件更新平台后端
 
-这是一个基于Node.js + Express + MongoDB开发的软件下载平台后端服务，提供钉钉扫码登录、软件管理和下载功能。
-
-## 功能特性
-
-- 钉钉扫码登录
-- JWT身份认证
+## 功能介绍
+- 钉钉扫码登录认证
 - 用户管理
-- 软件管理
-- 软件下载与统计
-- RESTful API
+- JWT令牌身份验证
+- 软件包管理与下载
+
+## 项目配置说明
+
+### 环境变量配置
+在项目根目录创建 `.env` 文件，参考以下配置：
+
+```
+# 服务器配置
+PORT=4000
+NODE_ENV=development
+
+# JWT配置
+JWT_SECRET=your_jwt_secret_key
+JWT_REFRESH_SECRET=your_jwt_refresh_secret
+JWT_EXPIRE=24h
+JWT_REFRESH_EXPIRE=7d
+
+# 钉钉应用配置
+DINGTALK_APP_KEY=your_dingtalk_app_key
+DINGTALK_APP_SECRET=your_dingtalk_app_secret
+DINGTALK_REDIRECT_URI=http://localhost:3000/auth/dingtalk/callback
+
+# 访问白名单
+ALLOWED_DINGTALK_PHONES=13800138000,13900139000
+ALLOWED_DINGTALK_EMAILS=user1@example.com,user2@example.com
+STRICT_WHITELIST=false
+```
+
+### 本地开发
+```bash
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+```
+
+### 生产部署
+```bash
+# 启动生产服务器
+npm start
+```
+
+### 钉钉应用配置
+在开发前，需要在钉钉开放平台创建应用并配置好以下信息：
+
+1. 创建第三方企业应用
+2. 配置应用首页地址为前端部署地址
+3. 配置登录回调域名
+4. 获取AppKey和AppSecret并设置到.env文件中
 
 ## 技术栈
 
@@ -35,66 +80,6 @@ backend/
   ├── .env                 # 环境变量
   ├── package.json
   └── README.md
-```
-
-## 安装与使用
-
-### 前提条件
-
-- Node.js (v14+)
-- MongoDB
-- 钉钉开发者账号和应用
-
-### 安装步骤
-
-1. 克隆代码库
-
-```bash
-git clone <repository-url>
-cd backend
-```
-
-2. 安装依赖
-
-```bash
-npm install
-```
-
-3. 配置环境变量
-
-复制`.env.example`文件并重命名为`.env`，然后填写相应的配置：
-
-```
-# 服务器配置
-PORT=5000
-NODE_ENV=development
-
-# MongoDB 数据库配置
-MONGODB_URI=mongodb://localhost:27017/software-platform
-
-# JWT配置
-JWT_SECRET=your_jwt_secret_key_here
-JWT_EXPIRE=86400000
-
-# 钉钉应用配置
-DINGTALK_APP_ID=your_dingtalk_app_id
-DINGTALK_APP_SECRET=your_dingtalk_app_secret
-DINGTALK_REDIRECT_URI=http://localhost:5000/api/auth/dingtalk/callback
-
-# 前端URL
-FRONTEND_URL=http://localhost:8080
-```
-
-4. 启动服务
-
-开发模式：
-```bash
-npm run dev
-```
-
-生产模式：
-```bash
-npm start
 ```
 
 ## API文档

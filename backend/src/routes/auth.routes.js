@@ -6,41 +6,35 @@ const router = express.Router();
 const { body } = require('express-validator');
 const authService = require('../services/auth.service');
 const dingtalkConfig = require('../config/dingtalk.config');
+const authController = require('../controllers/auth.controller');
 
 /**
  * @route   GET /api/auth/dingtalk/config
  * @desc    获取钉钉登录配置
  * @access  公开
  */
-router.get('/dingtalk/config', (req, res) => {
-  res.json({
-    appId: dingtalkConfig.DINGTALK_APP_ID,
-    redirectUri: dingtalkConfig.DINGTALK_REDIRECT_URI,
-  });
-});
+router.get('/dingtalk/config', authController.getDingTalkConfig);
 
 /**
- * @route   POST /api/auth/dingtalk
- * @desc    使用钉钉临时授权码登录
+ * @route   GET /api/auth/dingtalk/qrcode
+ * @desc    生成钉钉登录二维码所需信息
  * @access  公开
  */
-router.post(
-  '/dingtalk',
-  [body('code').notEmpty().withMessage('临时授权码不能为空')],
-  async (req, res) => {
-    try {
-      const { code } = req.body;
-      
-      // 通过钉钉临时授权码登录
-      const result = await authService.loginWithDingtalk(code);
-      
-      res.json(result);
-    } catch (error) {
-      console.error('钉钉登录错误:', error);
-      res.status(401).json({ message: error.message || '登录失败' });
-    }
-  }
-);
+router.get('/dingtalk/qrcode', authController.getLoginQRCode);
+
+/**
+ * @route   POST /api/auth/dingtalk/login
+ * @desc    处理钉钉登录
+ * @access  公开
+ */
+router.post('/dingtalk/login', authController.handleDingTalkLogin);
+
+/**
+ * @route   POST /api/auth/refresh
+ * @desc    刷新令牌
+ * @access  公开
+ */
+router.post('/refresh', authController.refreshToken);
 
 /**
  * @route   GET /api/auth/dingtalk/callback
